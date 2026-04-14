@@ -1,0 +1,73 @@
+trigger:
+  paths:
+    include:
+      - vote/*
+
+resources:
+- repo: self
+
+variables:
+  dockerRegistryServiceConnection: 'ec8df684-e359-41ab-9a1f-b5045c6022b3'
+  imageRepository: 'projectvotingapp'
+  containerRegistry: 'gameroramavotingapp.azurecr.io'
+  dockerfilePath: '$(Build.SourcesDirectory)/vote/Dockerfile'
+  tag: '$(Build.BuildId)'
+
+pool:
+  name: azureagent
+
+stages:
+- stage: Build
+  displayName: Build Stage
+  jobs:
+  - job: Build
+    displayName: Build
+    steps:
+    - task: Docker@2
+      displayName: Build image
+      inputs:
+        containerRegistry: '$(dockerRegistryServiceConnection)'
+        repository: '$(imageRepository)'
+        command: 'build'
+        Dockerfile: 'vote/Dockerfile'
+        tags: '$(tag)'
+
+- stage: Push
+  displayName: Push Stage
+  jobs:
+  - job: Push
+    displayName: Push
+    steps:
+    - task: Docker@2
+      displayName: Push image
+      inputs:
+        containerRegistry: '$(dockerRegistryServiceConnection)'
+        repository: '$(imageRepository)'
+        command: 'push'
+        tags: '$(tag)'
+
+
+
+- stage: Update
+  displayName: Update Stage
+  jobs:
+  - job: Update
+    displayName: Update
+    steps:
+
+    # ✅ Ensure repo is checked out
+    - checkout: self
+
+    # 🔥 FIX CRLF ISSUE (THIS SOLVES YOUR ERROR)
+    - script: |
+        echo "Fixing line endings..."
+        sed -i 's/\r$//' scripts/updateK8sManifests.sh
+        chmod +x scripts/updateK8sManifests.sh
+      displayName: "Fix CRLF issue"
+
+    # 🚀 RUN YOUR SCRIPT
+    - task: ShellScript@2
+      displayName: "Run update script"
+      inputs:
+        scriptPath: 'scripts/updateK8sManifests.sh'
+        args: 'vote $(imageRepository) $(tag)'
